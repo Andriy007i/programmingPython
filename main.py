@@ -1,95 +1,119 @@
 import os
+import random
 
-# Глобальна змінна для налаштувань (демонстрація global)
-GAME_TITLE = "Frogger Console Edition"
-SCORE = 0
+# 1. Глобальні змінні (Global scope)
+GAME_TITLE = "FROGGER: ULTIMATE SURVIVAL"
+HIGH_SCORE_FILE = "highscore.txt"
 
-def start_game():
-    # Поле: # - стіна, . - дорога, G - мета (Goal), T - тротуар, P - гравець
-    # Рядки str для ігрового поля
-    level_map = [
+def load_high_score():
+    """Вбудована функція відкриття файлу та обробка винятків."""
+    try:
+        with open(HIGH_SCORE_FILE, "r") as f:
+            return int(f.read())
+    except (FileNotFoundError, ValueError):
+        return 0
+
+def play_game(level_difficulty=1.0):
+    # 2. Початкові дані
+    # Траса (str), де 'M' - машина, '.' - дорога, 'G' - мета, 'T' - тротуар
+    world_map = [
         "GGGGGGGGGG",
         "TTTTTTTTTT",
-        "..........", # Дорога 1
-        "..........", # Дорога 2
+        "M.M.M.M.M.",  # Смуга руху 1
+        ".M.M.M.M.M",  # Смуга руху 2
         "TTTTTTTTTT",
-        "PTTTTTTTTT"  # Старт
+        "TTTTPTTTTT"   # P - гравець
     ]
     
-    player_pos = [5, 0] # Рядок, Стовпчик
-    is_running = True
+    # Перетворюємо рядки у списки для можливості зміни (Mutable)
+    grid = [list(row) for row in world_map]
+    player_pos = [5, 4]  # [row, col]
+    score = 0
+    is_alive = True
 
-    # Вкладена функція (Nested function)
-    def check_bounds(r, c):
-        # Використання виразу виду a < b < c
-        return 0 <= r < len(level_map) and 0 <= c < len(level_map[0])
+    # 3. Вкладена функція (Nested function) для перевірки колізій
+    def is_collision(r, c):
+        # Використання виразу a < b < c (Requirement)
+        if 0 <= r < len(grid) and 0 <= c < len(grid[0]):
+            return grid[r][c] == 'M'
+        return False
 
-    # Функція з keyword arguments та використанням / (positional-only)
-    def render_screen(msg="Рухайтеся до G!", /):
+    # 4. Функція з * та / (Special parameters)
+    def update_world(step_count, /, *, speed=1):
+        """Зсуває машини на дорозі після кожного кроку."""
+        nonlocal grid  # Використання nonlocal (Requirement)
+        for r in range(2, 4):  # Тільки ряди з дорогою
+            if r == 2: # Машини їдуть вправо
+                grid[r] = grid[r][-1:] + grid[r][:-1]
+            else: # Машини їдуть вліво
+                grid[r] = grid[r][1:] + grid[r][:1]
+
+    # 5. Лямбда-вираз для швидкого відображення символів
+    get_icon = lambda char: "🚗" if char == 'M' else ("🟩" if char == 'T' else ("🏆" if char == 'G' else "⬛"))
+
+    def render():
         os.system('cls' if os.name == 'nt' else 'clear')
-        print(f"--- {GAME_TITLE} ---")
-        for r_idx, row in enumerate(level_map):
-            display_row = ""
-            for c_idx, char in enumerate(row):
-                if r_idx == player_pos[0] and c_idx == player_pos[1]:
-                    display_row += "🐸"
-                else:
-                    display_row += char
-            print(display_row)
-        print(f"Рахунок: {SCORE}")
-        print(msg)
-
-    # Функція для руху (демонстрація nonlocal)
-    def move_player(direction):
-        nonlocal player_pos
-        global SCORE
+        print(f"=== {GAME_TITLE} | SCORE: {score} ===")
         
-        dr, dc = 0, 0
-        # Лямбда-вираз для перевірки символу
-        get_tile = lambda r, c: level_map[r][c]
+        for r in range(len(grid)):
+            row_str = ""
+            for c in range(len(grid[0])):
+                if [r, c] == player_pos:
+                    row_str += "🐸"
+                else:
+                    row_str += get_icon(grid[r][c])
+            print(row_str)
+        print("\nУправління: W, A, S, D (Enter для підтвердження). Q - вихід.")
 
-        if direction == 'w': dr = -1
-        elif direction == 's': dr = 1
-        elif direction == 'a': dc = -1
-        elif direction == 'd': dc = 1
-        else: return # Некоректна клавіша
+    # 6. Основний ігровий цикл
+    while is_alive:
+        render()
+        move = input("Ваш хід: ").lower()
+
+        if move == 'q':
+            break
+        
+        # Логіка руху
+        dr, dc = 0, 0
+        if move == 'w': dr = -1
+        elif move == 's': dr = 1
+        elif move == 'a': dc = -1
+        elif move == 'd': dc = 1
+        else: continue # Пропуск ітерації (Requirement)
 
         new_r, new_c = player_pos[0] + dr, player_pos[1] + dc
 
-        # Логічні операції and, or, not + перевірка меж
-        if not check_bounds(new_r, new_c) or get_tile(new_r, new_c) == "#":
-            return
-        
-        player_pos[0], player_pos[1] = new_r, new_c
-        
-        # Перевірка умови виграшу (Приз)
-        if get_tile(new_r, new_c) == "G":
-            SCORE += 100
-            return "WIN"
-        return None
-
-    # Ігровий цикл (while)
-    while is_running:
-        render_screen()
-        key = input("Введіть (W/A/S/D): ").lower()
-        
-        if key == 'q': 
-            break # break
+        # Перевірка меж та перешкод
+        if 0 <= new_r < len(grid) and 0 <= new_c < len(grid[0]):
+            player_pos = [new_r, new_c]
+            update_world(1, speed=2) # Виклик з keyword argument
             
-        result = move_player(key)
-        
-        if result == "WIN":
-            render_screen("ВИТАЮ! Ви дісталися мети!")
-            break
-        
-        # Використання range та for для "анімації" (імітація)
-        for _ in range(1):
-            if SCORE < 0:
-                continue # continue
-    else:
-        # else для циклу (виконається, якщо не було break)
-        print("Гра завершена.")
+            # Перевірка на смерть або перемогу
+            if is_collision(player_pos[0], player_pos[1]):
+                render()
+                print("БЕМС! Вас збила машина! 💀")
+                is_alive = False
+            elif grid[player_pos[0]][player_pos[1]] == 'G':
+                score += 100
+                render()
+                print(f"ПЕРЕМОГА! Ви пройшли рівень! Рахунок: {score} 🎉")
+                break
+        else:
+            print("Там стіна!")
+    
+    return score
 
-# Запуск
+def main():
+    """Головна точка входу."""
+    high_score = load_high_score()
+    print(f"Попередній рекорд: {high_score}")
+    
+    current_score = play_game()
+    
+    if current_score > high_score:
+        print(f"НОВИЙ РЕКОРД: {current_score}!")
+        with open(HIGH_SCORE_FILE, "w") as f:
+            f.write(str(current_score))
+
 if __name__ == "__main__":
-    start_game()
+    main()
